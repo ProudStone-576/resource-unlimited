@@ -9,6 +9,7 @@
   },
   "packageManager": "pnpm@9.12.0",
   "scripts": {
+    "postinstall": "pnpm --filter @ru/db run generate",
     "build": "pnpm -r --filter \"./packages/**\" run build && pnpm -r --filter \"./apps/**\" run build",
     "dev": "node scripts/dev.mjs",
     "dev:web": "npm --prefix apps/web run dev",
