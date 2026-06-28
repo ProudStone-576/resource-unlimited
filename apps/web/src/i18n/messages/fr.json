@@ -1,0 +1,38 @@
+{
+  "common": {
+    "brand": "Resources Unlimited",
+    "tagline": "Distributeur canadien autorisé des produits Grafico Packaging.",
+    "requestQuote": "Demander une soumission",
+    "browseCatalog": "Parcourir le catalogue",
+    "signIn": "Se connecter",
+    "portal": "Portail",
+    "admin": "Admin",
+    "contactSales": "Contacter les ventes",
+    "loading": "Chargement…",
+    "addToQuote": "Ajouter à la soumission",
+    "saveToFavorites": "Enregistrer dans les favoris",
+    "downloadPdf": "Télécharger le PDF"
+  },
+  "nav": {
+    "home": "Accueil",
+    "products": "Produits",
+    "about": "À propos",
+    "contact": "Contact",
+    "blog": "Blogue"
+  },
+  "home": {
+    "heroTitle": "L'emballage industriel qui fait avancer les opérations canadiennes.",
+    "heroLead": "Resources Unlimited tient en stock les gammes Grafico Packaging — carton ondulé, emballage protecteur, ruban, film étirable et fournitures d'entrepôt — avec une tarification B2B négociée.",
+    "categoriesEyebrow": "Catégories",
+    "categoriesHeading": "Magasiner par gamme de produits",
+    "featuredEyebrow": "En vedette",
+    "featuredHeading": "Populaires auprès des acheteurs canadiens"
+  },
+  "newsletter": {
+    "heading": "Restez informé",
+    "subheading": "Conseils d'opérations, nouveaux produits et offres en gros. Pas de spam.",
+    "emailLabel": "Courriel",
+    "subscribe": "S'abonner",
+    "thanks": "Abonné — vérifiez votre boîte de réception."
+  }
+}

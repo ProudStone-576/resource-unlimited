@@ -1,0 +1,40 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build output
+dist
+build
+.next
+.turbo
+out
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Test
+coverage
+test-results
+playwright-report
+apps/web/shots
+
+# Prisma
+packages/db/prisma/migrations/dev/*
+packages/db/prisma/*.db
+
+# Uploads (local dev only)
+uploads
+tmp

@@ -1,0 +1,32 @@
+{
+  "name": "resources-unlimited",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Resources Unlimited - B2B packaging distribution platform (Canadian distributor of Grafico Packaging).",
+  "engines": {
+    "node": ">=20.9.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/**\" run build && pnpm -r --filter \"./apps/**\" run build",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm --prefix apps/web run dev",
+    "dev:api": "npm --prefix apps/api run dev",
+    "lint": "pnpm -r run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "typecheck": "pnpm -r run typecheck",
+    "db:generate": "pnpm --filter @ru/db run generate",
+    "db:migrate": "pnpm --filter @ru/db run migrate",
+    "db:seed": "pnpm --filter @ru/db run seed",
+    "db:studio": "pnpm --filter @ru/db run studio",
+    "clean": "pnpm -r exec rm -rf node_modules dist .next .turbo && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.0",
+    "@types/node": "^20.14.10",
+    "eslint": "^9.10.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.2"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "common": {
+    "brand": "Resources Unlimited",
+    "tagline": "Authorized Canadian distributor of Grafico Packaging.",
+    "requestQuote": "Request Quote",
+    "browseCatalog": "Browse Catalog",
+    "signIn": "Sign in",
+    "portal": "Portal",
+    "admin": "Admin",
+    "contactSales": "Contact Sales",
+    "loading": "Loading…",
+    "addToQuote": "Add to Quote",
+    "saveToFavorites": "Save to favorites",
+    "downloadPdf": "Download PDF"
+  },
+  "nav": {
+    "home": "Home",
+    "products": "Products",
+    "about": "About",
+    "contact": "Contact",
+    "blog": "Blog"
+  },
+  "home": {
+    "heroTitle": "Industrial packaging that keeps Canadian operations moving.",
+    "heroLead": "Resources Unlimited stocks Grafico Packaging product lines for corrugated, protective, tape, stretch film, and warehouse supplies — backed by negotiated B2B pricing.",
+    "categoriesEyebrow": "Categories",
+    "categoriesHeading": "Shop by product line",
+    "featuredEyebrow": "Featured",
+    "featuredHeading": "Popular with Canadian buyers"
+  },
+  "newsletter": {
+    "heading": "Stay updated",
+    "subheading": "Operational tips, new products, and bulk-buy windows. No spam.",
+    "emailLabel": "Email",
+    "subscribe": "Subscribe",
+    "thanks": "Subscribed — check your inbox."
+  }
+}

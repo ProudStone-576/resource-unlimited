@@ -1,0 +1,1124 @@
+// ============================================================
+// Resources Unlimited — Prisma schema
+// Phase 1: public catalog, quote requests, contact inquiries.
+// Future-proofed: User/Role enums and audit fields included
+// so later phases (auth, client portal, admin, orders) can add
+// relations without refactoring existing tables.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------
+
+/// Roles span all future phases. Visitor is implicit (unauthenticated).
+enum UserRole {
+  CLIENT
+  SALES_REP
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum QuoteStatus {
+  NEW
+  IN_REVIEW
+  QUOTED
+  WON
+  LOST
+  CANCELLED
+}
+
+enum ContactStatus {
+  NEW
+  IN_PROGRESS
+  CLOSED
+}
+
+enum QuoteEventType {
+  CREATED
+  STATUS_CHANGED
+  PDF_GENERATED
+  EMAIL_SENT
+  ASSIGNED
+  NOTE_ADDED
+  CONVERTED_TO_ORDER
+}
+
+enum OrderStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderEventType {
+  CREATED
+  STATUS_CHANGED
+  NOTE_ADDED
+  INVOICE_GENERATED
+  EMAIL_SENT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+  OVERDUE
+}
+
+enum AddressType {
+  SHIPPING
+  BILLING
+  BOTH
+}
+
+enum CompanyInviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum PromotionStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  EXPIRED
+  ARCHIVED
+}
+
+enum PromotionScope {
+  PUBLIC
+  COMPANY
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum BannerPlacement {
+  HOMEPAGE_HERO
+  HOMEPAGE_STRIP
+  CATEGORY
+  CHECKOUT
+}
+
+enum PageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CompanyApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_CHANGE
+  LOGIN
+  EXPORT
+  IMPORT
+  UPLOAD_SIGNED
+  APPROVE
+  REJECT
+}
+
+enum NewsletterStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
+  BOUNCED
+}
+
+enum WebhookEvent {
+  ORDER_CREATED
+  ORDER_STATUS_CHANGED
+  QUOTE_CREATED
+  QUOTE_STATUS_CHANGED
+  INVOICE_ISSUED
+  COMPANY_APPROVED
+  CONTACT_INQUIRY
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum Locale {
+  EN
+  FR
+}
+
+enum UnitOfMeasure {
+  EACH
+  CASE
+  PALLET
+  ROLL
+  BOX
+  BAG
+  SHEET
+  METER
+  FOOT
+}
+
+// ------------------------------------------------------------
+// CATALOG
+// ------------------------------------------------------------
+
+model ProductCategory {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  imageUrl    String?
+
+  // Self-referential tree for subcategories (future-proof for Grafico-style nav)
+  parentId String?
+  parent   ProductCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ProductCategory[] @relation("CategoryTree")
+
+  // Display
+  sortOrder Int     @default(0)
+  isVisible Boolean @default(true)
+
+  // SEO
+  metaTitle       String?
+  metaDescription String?
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([isVisible, sortOrder])
+}
+
+model Product {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  sku         String  @unique
+  name        String
+  shortDesc   String?
+  description String? @db.Text
+
+  status     ProductStatus @default(ACTIVE)
+  isFeatured Boolean       @default(false)
+
+  // Categorization
+  categoryId String
+  category   ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  // Free-text brand kept for Phase 1 back-compat; new structured brand link
+  // added in Phase 5. Either may be set; admin UI prefers brandId.
+  brand   String?
+  brandId String?
+  brandRef Brand?  @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  // Units & dimensions
+  unitOfMeasure UnitOfMeasure @default(EACH)
+  minOrderQty   Int           @default(1)
+
+  // Phase-2+ pricing fields. Public site shows "Request Quote" — listPrice
+  // is admin-only metadata; client-tier pricing comes later via PriceList.
+  listPrice Decimal? @db.Decimal(12, 2)
+  currency  String   @default("CAD")
+
+  // Flexible specs/dimensions as JSON keeps schema stable as catalog grows.
+  // Example: { "length": "12in", "material": "kraft", "color": "natural" }
+  specs      Json?
+  dimensions Json?
+
+  // SEO
+  metaTitle       String?
+  metaDescription String?
+
+  // Relations
+  images    ProductImage[]
+  documents ProductDocument[]
+
+  quoteItems QuoteItem[]
+
+  // Phase 4
+  favorites    FavoriteProduct[]
+  clientPrices ClientPrice[]
+  orderItems   OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId, status])
+  @@index([status, isFeatured])
+  @@index([name])
+  @@index([brandId])
+}
+
+model ProductImage {
+  id        String @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  url      String
+  alt      String?
+  sortOrder Int    @default(0)
+  isPrimary Boolean @default(false)
+
+  // Cloudinary references — kept nullable until upload pipeline lands
+  providerPublicId String?
+  width            Int?
+  height           Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, sortOrder])
+}
+
+model ProductDocument {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  label   String
+  url     String
+  mime    String?
+  sizeKB  Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+// ------------------------------------------------------------
+// QUOTES (public-visitor lead capture; Phase 2 extends this)
+// ------------------------------------------------------------
+
+model QuoteRequest {
+  id     String      @id @default(cuid())
+  number String      @unique // human-friendly Q-2026-000001
+  status QuoteStatus @default(NEW)
+
+  // Anonymous-friendly: capture the requester inline. Future User can link.
+  companyName  String
+  contactName  String
+  contactEmail String
+  contactPhone String?
+  country      String? @default("CA")
+  province     String?
+  city         String?
+  postalCode   String?
+
+  // For future client portal: if a logged-in client submits, link here.
+  // Nullable so Phase 1 public submissions work.
+  submittedByUserId String?
+
+  notes String? @db.Text
+
+  // Tracking
+  source        String? // "product-page", "quote-cart", "contact-form"
+  ipAddress     String?
+  userAgent     String?
+
+  // Phase 2 — buyer-side tracking + sales pipeline
+  viewToken      String   @unique // long random; required to view tracking page
+  validUntil     DateTime? // populated by sales when quoted
+  totalEstimate  Decimal? @db.Decimal(12, 2)
+  currency       String   @default("CAD")
+  quotePdfUrl    String? // pointer to generated PDF (local or storage)
+  salesRepId     String? // Phase 3 will link to User.id
+  salesRep       User?   @relation("QuoteSalesRep", fields: [salesRepId], references: [id], onDelete: SetNull)
+
+  items  QuoteItem[]
+  events QuoteEvent[]
+
+  // Phase 4 — quote→order conversion
+  orders Order[] @relation("OrderFromQuote")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([contactEmail])
+  @@index([salesRepId])
+}
+
+// Audit trail for status transitions and key actions on a quote.
+model QuoteEvent {
+  id      String       @id @default(cuid())
+  quoteId String
+  quote   QuoteRequest @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  type    QuoteEventType
+  fromStatus QuoteStatus?
+  toStatus   QuoteStatus?
+  message    String? @db.Text
+
+  // Who performed the action; nullable for system events.
+  actorUserId String?
+  actorLabel  String? // human label when no User yet (e.g. "system", "sales@…")
+
+  createdAt DateTime @default(now())
+
+  @@index([quoteId, createdAt])
+}
+
+model QuoteItem {
+  id        String       @id @default(cuid())
+  quoteId   String
+  quote     QuoteRequest @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  // Snapshot fields so quote history survives product edits/deletions
+  productSku  String
+  productName String
+
+  quantity Int    @default(1)
+  notes    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([quoteId])
+  @@index([productId])
+}
+
+// ------------------------------------------------------------
+// CONTACT
+// ------------------------------------------------------------
+
+model ContactInquiry {
+  id String @id @default(cuid())
+
+  name    String
+  email   String
+  phone   String?
+  company String?
+  subject String?
+  message String @db.Text
+
+  status ContactStatus @default(NEW)
+
+  // Tracking
+  source    String?
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([email])
+}
+
+// ------------------------------------------------------------
+// USER STUB (Phase 1 NOT used at runtime; reserved so future
+// auth + portal can attach without breaking migrations).
+// We intentionally keep this minimal — full Auth/Refresh tables
+// land in Phase 3.
+// ------------------------------------------------------------
+
+model User {
+  id    String   @id @default(cuid())
+  email String   @unique
+  role  UserRole @default(CLIENT)
+
+  // Account metadata
+  firstName String?
+  lastName  String?
+  isActive  Boolean @default(true)
+
+  // Optional company link — fleshed out in Phase 4 (multi-user accounts)
+  companyName String?
+
+  // Phase 3 — authentication
+  passwordHash         String?
+  emailVerifiedAt      DateTime?
+  lastLoginAt          DateTime?
+  failedLoginAttempts  Int       @default(0)
+  lockedUntil          DateTime?
+
+  // Phase 2 — sales reps own quotes; reverse relation kept here so future
+  // RBAC + portal can list "my quotes" without adding a column later.
+  assignedQuotes QuoteRequest[] @relation("QuoteSalesRep")
+
+  // Phase 3 — auth side-tables
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+
+  // Phase 3 — company membership (multi-user accounts, expanded in Phase 4)
+  companies UserOnCompany[]
+
+  // Phase 4 — portal
+  favorites      FavoriteProduct[]
+  placedOrders   Order[]            @relation("OrderPlacedBy")
+  invitesSent    CompanyInvite[]    @relation("CompanyInviteInviter")
+
+  // Phase 5 — content authorship + audit
+  authoredPosts BlogPost[]   @relation("BlogPostAuthor")
+  auditLogs     AuditLog[]   @relation("AuditLogActor")
+  reviewedApps  CompanyApplication[] @relation("CompanyApplicationReviewer")
+
+  // Phase 6 — i18n preference
+  locale Locale @default(EN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role, isActive])
+  @@index([emailVerifiedAt])
+}
+
+// ------------------------------------------------------------
+// AUTH SIDE-TABLES (Phase 3)
+// ------------------------------------------------------------
+
+/// Refresh tokens are stored as hashes; rotation tracked via `replacedById`
+/// and a `family` identifier so we can invalidate a whole lineage on theft.
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash    String   @unique
+  family       String   // lineage id; rotated tokens share this
+  replacedById String?  @unique
+  replacedBy   RefreshToken?  @relation("RefreshTokenRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces     RefreshToken?  @relation("RefreshTokenRotation")
+
+  revokedAt    DateTime?
+  expiresAt    DateTime
+
+  userAgent String?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([family])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, usedAt])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, usedAt])
+}
+
+// ------------------------------------------------------------
+// COMPANY / MEMBERSHIP (Phase 3 stub; expanded in Phase 4)
+// ------------------------------------------------------------
+
+enum CompanyRole {
+  MEMBER
+  ADMIN // company admin (can invite teammates)
+  OWNER
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  legalName   String?
+  taxId       String?
+  isApproved  Boolean  @default(false)
+  approvedAt  DateTime?
+
+  members UserOnCompany[]
+
+  // Phase 4
+  addresses    Address[]
+  priceListId  String?
+  priceList    PriceList? @relation(fields: [priceListId], references: [id], onDelete: SetNull)
+  orders       Order[]
+  invoices     Invoice[]
+  invites      CompanyInvite[]
+  clientPrices ClientPrice[]
+
+  // Phase 5 — approval workflow + targeted promotions
+  applications     CompanyApplication[]
+  promotionTargets PromotionTarget[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isApproved])
+}
+
+model UserOnCompany {
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  role      CompanyRole @default(MEMBER)
+  isPrimary Boolean     @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, companyId])
+  @@index([companyId, role])
+}
+
+// ------------------------------------------------------------
+// PORTAL (Phase 4) — addresses, pricing, orders, invoices,
+// favorites, invites.
+// All new tables; no existing column renames or drops.
+// ------------------------------------------------------------
+
+model Address {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  type        AddressType @default(SHIPPING)
+  label       String?     // "HQ", "Warehouse 1", etc.
+  attentionTo String?
+  line1       String
+  line2       String?
+  city        String
+  province    String
+  postalCode  String
+  country     String      @default("CA")
+  phone       String?
+
+  isDefault Boolean @default(false)
+
+  shippingOrders Order[] @relation("OrderShipTo")
+  billingOrders  Order[] @relation("OrderBillTo")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, type])
+}
+
+/// Named negotiated price list (e.g. "Tier A", "Acme Inc - 2026").
+/// A Company may have at most one assigned PriceList; per-SKU overrides
+/// live in ClientPrice and beat the list's published prices.
+model PriceList {
+  id       String  @id @default(cuid())
+  name     String
+  currency String  @default("CAD")
+  isActive Boolean @default(true)
+
+  companies    Company[]
+  clientPrices ClientPrice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ClientPrice {
+  id          String  @id @default(cuid())
+
+  // Either company-level override OR list-level price.
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  priceListId String?
+  priceList   PriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+
+  productId   String
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  unitPrice   Decimal @db.Decimal(12, 2)
+  currency    String  @default("CAD")
+  minQty      Int     @default(1)
+
+  validFrom DateTime?
+  validTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, productId], name: "company_product")
+  @@unique([priceListId, productId], name: "pricelist_product")
+  @@index([productId])
+}
+
+model FavoriteProduct {
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, productId])
+  @@index([userId])
+}
+
+// ------------------------------------------------------------
+// ORDERS
+// ------------------------------------------------------------
+
+model Order {
+  id     String      @id @default(cuid())
+  number String      @unique // O-2026-000001
+  status OrderStatus @default(PENDING)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  placedByUserId String
+  placedBy       User   @relation("OrderPlacedBy", fields: [placedByUserId], references: [id], onDelete: Restrict)
+
+  // Snapshot of contact information so historical orders survive user/company edits
+  buyerName  String
+  buyerEmail String
+  buyerPhone String?
+
+  // Address snapshots — keep pointer + frozen JSON for audit
+  shippingAddressId String?
+  shippingAddress   Address? @relation("OrderShipTo", fields: [shippingAddressId], references: [id], onDelete: SetNull)
+  shippingSnapshot  Json
+
+  billingAddressId String?
+  billingAddress   Address? @relation("OrderBillTo", fields: [billingAddressId], references: [id], onDelete: SetNull)
+  billingSnapshot  Json?
+
+  notes String? @db.Text
+
+  currency      String   @default("CAD")
+  subtotal      Decimal  @db.Decimal(12, 2)
+  taxTotal      Decimal  @default(0) @db.Decimal(12, 2)
+  shippingTotal Decimal  @default(0) @db.Decimal(12, 2)
+  grandTotal    Decimal  @db.Decimal(12, 2)
+
+  // Source linkage (for quote→order conversion)
+  sourceQuoteId String?
+  sourceQuote   QuoteRequest? @relation("OrderFromQuote", fields: [sourceQuoteId], references: [id], onDelete: SetNull)
+
+  items    OrderItem[]
+  events   OrderEvent[]
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status, createdAt])
+  @@index([placedByUserId])
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  // Snapshot — product can change after the order is placed
+  productSku  String
+  productName String
+
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(12, 2)
+  lineTotal  Decimal @db.Decimal(12, 2)
+  notes      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderEvent {
+  id      String         @id @default(cuid())
+  orderId String
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  type       OrderEventType
+  fromStatus OrderStatus?
+  toStatus   OrderStatus?
+  message    String?        @db.Text
+  actorUserId String?
+  actorLabel  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+// ------------------------------------------------------------
+// INVOICES
+// ------------------------------------------------------------
+
+model Invoice {
+  id     String        @id @default(cuid())
+  number String        @unique // INV-2026-000001
+  status InvoiceStatus @default(DRAFT)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  currency   String   @default("CAD")
+  subtotal   Decimal  @db.Decimal(12, 2)
+  taxTotal   Decimal  @default(0) @db.Decimal(12, 2)
+  grandTotal Decimal  @db.Decimal(12, 2)
+
+  issuedAt DateTime?
+  dueAt    DateTime?
+  paidAt   DateTime?
+
+  pdfUrl String?
+
+  // Snapshot of company billing details at issue time so historical
+  // invoices stay correct after company edits.
+  billingSnapshot Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status, issuedAt])
+  @@index([status, dueAt])
+}
+
+// ------------------------------------------------------------
+// COMPANY INVITES
+// ------------------------------------------------------------
+
+model CompanyInvite {
+  id        String              @id @default(cuid())
+  companyId String
+  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  email     String
+  role      CompanyRole         @default(MEMBER)
+
+  tokenHash String              @unique
+  status    CompanyInviteStatus @default(PENDING)
+  expiresAt DateTime
+  acceptedAt DateTime?
+
+  invitedById String?
+  invitedBy   User?   @relation("CompanyInviteInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId, status])
+  @@index([email, status])
+}
+
+// ------------------------------------------------------------
+// CATALOG SUPPORT (Phase 5) — Brand model
+// ------------------------------------------------------------
+
+model Brand {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  logoUrl     String?
+  websiteUrl  String?
+  isVisible   Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  metaTitle       String?
+  metaDescription String?
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isVisible, sortOrder])
+}
+
+// ------------------------------------------------------------
+// PROMOTIONS & BANNERS (Phase 5)
+// ------------------------------------------------------------
+
+model Promotion {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  name        String
+  description String?         @db.Text
+  status      PromotionStatus @default(DRAFT)
+  scope       PromotionScope  @default(PUBLIC)
+
+  discountType  DiscountType?
+  discountValue Decimal?      @db.Decimal(12, 4)
+  minOrderTotal Decimal?      @db.Decimal(12, 2)
+  currency      String        @default("CAD")
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  // Visibility on the homepage / category pages
+  bannerId String? @unique
+  banner   Banner? @relation(fields: [bannerId], references: [id], onDelete: SetNull)
+
+  targets PromotionTarget[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, startsAt, endsAt])
+  @@index([scope, status])
+}
+
+/// Restricts a COMPANY-scoped promotion to specific buyers.
+model PromotionTarget {
+  promotionId String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([promotionId, companyId])
+  @@index([companyId])
+}
+
+model Banner {
+  id        String          @id @default(cuid())
+  placement BannerPlacement
+  title     String
+  subtitle  String?
+  ctaLabel  String?
+  ctaHref   String?
+
+  imageUrl  String?
+  imageAlt  String?
+
+  isActive  Boolean   @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  sortOrder Int       @default(0)
+
+  promotion Promotion?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([placement, isActive, sortOrder])
+  @@index([startsAt, endsAt])
+}
+
+// ------------------------------------------------------------
+// CONTENT (Phase 5) — pages + blog
+// ------------------------------------------------------------
+
+model Page {
+  id        String     @id @default(cuid())
+  slug      String     @unique
+  title     String
+  body      String     @db.Text // markdown
+  status    PageStatus @default(DRAFT)
+
+  metaTitle       String?
+  metaDescription String?
+
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+model BlogPost {
+  id      String     @id @default(cuid())
+  slug    String     @unique
+  title   String
+  excerpt String?
+  body    String     @db.Text // markdown
+  status  PageStatus @default(DRAFT)
+
+  coverImageUrl String?
+  tags          String[] // Postgres text[]
+
+  metaTitle       String?
+  metaDescription String?
+
+  publishedAt DateTime?
+
+  authorUserId String?
+  author       User?   @relation("BlogPostAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([authorUserId])
+}
+
+// ------------------------------------------------------------
+// CLIENT APPROVALS (Phase 5)
+// ------------------------------------------------------------
+
+/// A queued application to become a B2B client. Distinct from `Company`
+/// itself so an admin can track who reviewed, when, and the reason for
+/// rejection. When approved, the Company row is flipped to isApproved=true.
+model CompanyApplication {
+  id        String                   @id @default(cuid())
+  companyId String
+  company   Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  status    CompanyApplicationStatus @default(PENDING)
+  notes     String?                  @db.Text
+
+  reviewedById String?
+  reviewedBy   User?    @relation("CompanyApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([companyId])
+}
+
+// ------------------------------------------------------------
+// AUDIT LOG (Phase 5)
+// ------------------------------------------------------------
+
+/// Captured automatically by the AuditInterceptor on admin mutations.
+/// `before`/`after` carry the JSON diff so we can reconstruct edits.
+model AuditLog {
+  id          String      @id @default(cuid())
+  actorUserId String?
+  actor       User?       @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorLabel  String?     // fallback when actor not a User
+
+  action     AuditAction
+  entityType String
+  entityId   String?
+
+  before Json?
+  after  Json?
+
+  requestId String?
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+}
+
+// ------------------------------------------------------------
+// NEWSLETTER (Phase 6)
+// ------------------------------------------------------------
+
+model NewsletterSubscriber {
+  id     String           @id @default(cuid())
+  email  String           @unique
+  status NewsletterStatus @default(SUBSCRIBED)
+  locale Locale           @default(EN)
+
+  name        String?
+  source      String? // "footer", "checkout", "blog"
+  companyName String?
+
+  unsubscribeToken String  @unique
+  ipAddress        String?
+  userAgent        String?
+
+  subscribedAt   DateTime  @default(now())
+  unsubscribedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, subscribedAt])
+}
+
+// ------------------------------------------------------------
+// WEBHOOKS (Phase 6) — outbound integrations (ERP, CRM, etc.)
+// ------------------------------------------------------------
+
+model WebhookEndpoint {
+  id        String         @id @default(cuid())
+  name      String
+  url       String
+  secret    String         // HMAC signing secret (stored as plain so we can sign)
+  events    WebhookEvent[]
+  isActive  Boolean        @default(true)
+
+  failures Int       @default(0)
+  lastSuccessAt DateTime?
+  lastFailureAt DateTime?
+
+  deliveries WebhookDelivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model WebhookDelivery {
+  id         String                @id @default(cuid())
+  endpointId String
+  endpoint   WebhookEndpoint       @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  event       WebhookEvent
+  payload     Json
+  status      WebhookDeliveryStatus @default(PENDING)
+  attempts    Int                   @default(0)
+  responseCode Int?
+  responseBody String?              @db.Text
+  error       String?               @db.Text
+
+  scheduledAt DateTime  @default(now())
+  deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([endpointId, createdAt])
+  @@index([status, scheduledAt])
+}
