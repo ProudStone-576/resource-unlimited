@@ -10,6 +10,8 @@
     "./client": "./src/client.ts"
   },
   "scripts": {
+    "postinstall": "prisma generate",
+    "build": "prisma generate",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
